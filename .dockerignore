@@ -1,0 +1,10 @@
+# docker build context 瘦身（compose build context = 项目根）
+# 注意：dist/ 与 dist-server/ 是构建必需品，不可排除
+node_modules
+.git
+.bundle
+docs
+deploy/.env*
+deploy/.env
+*.log
+.DS_Store

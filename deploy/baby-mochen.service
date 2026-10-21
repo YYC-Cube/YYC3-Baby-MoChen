@@ -1,0 +1,28 @@
+# 裸机部署 systemd 单元（ECS 直装 / NAS fnOS 通用；NAS 实测无 docker，走本方案）
+# 布局约定：/opt/baby-mochen/{dist-server/boot.js, dist/, .env, deploy/}
+# 安装：sudo cp deploy/baby-mochen.service /etc/systemd/system/ && sudo systemctl daemon-reload
+# 启动：sudo systemctl enable --now baby-mochen
+[Unit]
+Description=Baby Growth Log (YYC3-Baby-MoChen) full-stack server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/baby-mochen
+EnvironmentFile=/opt/baby-mochen/.env
+ExecStart=/usr/bin/node /opt/baby-mochen/dist-server/boot.js
+Restart=always
+RestartSec=3
+
+# 基础加固：只读系统、私有 tmp、禁止提权
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/baby-mochen
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+# 反代到 app 容器（docker compose 方案）
+# 裸机部署时把 app:3000 改为 127.0.0.1:3000，并将本文件放 /etc/caddy/Caddyfile
+# 域名换成真实域名后 Caddy 自动签发/续期 HTTPS 证书
+baby.example.com {
+	encode zstd gzip
+	reverse_proxy app:3000
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

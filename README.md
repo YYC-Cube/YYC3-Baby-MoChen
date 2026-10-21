@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/YYC-Cube/YYC3-Baby-MoChen"><img src="https://img.shields.io/badge/GitHub-YYC--Cube%2FYYC3--Baby--MoChen-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repository" /></a>
   <img src="https://img.shields.io/badge/YYC%C2%B3-AI_Family-%235e2c8a?style=for-the-badge" alt="YYC³ AI Family" />
   <img src="https://img.shields.io/badge/人从众曌众从人-永久开源-%235e2c8a?style=for-the-badge" alt="人从众曌众从人 · 永久开源" />
   <img src="https://img.shields.io/badge/亦师亦友亦伯乐-一言一语一协同-%231e2b4f?style=for-the-badge" alt="亦师亦友亦伯乐" />
@@ -46,16 +47,36 @@
 
 ## 目录
 
+- [目录](#目录)
 - [项目定位](#项目定位)
 - [核心能力](#核心能力)
+  - [四大主视图](#四大主视图)
+  - [记录与统计](#记录与统计)
+  - [家庭与账号](#家庭与账号)
+  - [体验与工程](#体验与工程)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
+  - [分层架构图](#分层架构图)
+  - [图标化模块地图](#图标化模块地图)
+  - [关键数据流](#关键数据流)
 - [快速开始](#快速开始)
+  - [环境要求](#环境要求)
+  - [本地开发](#本地开发)
+  - [构建与运行](#构建与运行)
+  - [常用脚本](#常用脚本)
 - [目录结构](#目录结构)
 - [配置与环境变量](#配置与环境变量)
+  - [构建期常量](#构建期常量)
+  - [服务端运行时](#服务端运行时)
 - [数据模型与接口](#数据模型与接口)
+  - [数据表](#数据表)
+  - [HTTP 接口](#http-接口)
+  - [服务端防护](#服务端防护)
 - [部署形态](#部署形态)
 - [工程规范体系](#工程规范体系)
+  - [五维驱动 → 五高五标五化](#五维驱动--五高五标五化)
+  - [编码约定](#编码约定)
+  - [分支与提交](#分支与提交)
 - [质量门禁](#质量门禁)
 - [文档地图](#文档地图)
 - [贡献与安全](#贡献与安全)
@@ -78,6 +99,7 @@
 | 界面语言 | 中文 / English（运行时切换，构建期可设默认语言） |
 | 开发端口 | `3030` 起（团队约定） |
 | 生产端口 | `3000`（平台运行契约） |
+| 代码仓库 | [github.com/YYC-Cube/YYC3-Baby-MoChen](https://github.com/YYC-Cube/YYC3-Baby-MoChen)（镜像：内网 Git `origin`） |
 
 ---
 
@@ -295,6 +317,14 @@ YYC3-Baby-MoChen/
 │   ├── build-server.mjs        # 独立服务端打包
 │   ├── bundle.mjs              # 静态 / 全栈 zip 打包
 │   └── bundle-kimix.mjs        # kimix 源树打包
+├── deploy/                     # 落地部署产物与指导方案（compose / systemd / 备份）
+│   ├── README.md               # 完整落地上线指导方案（现网实测拓扑）
+│   ├── docker-compose.yml      # ECS 公网方案：Caddy + app + MySQL 8.4
+│   ├── Dockerfile              # 全栈镜像（boot.js 自包含，免 npm install）
+│   ├── Caddyfile               # 反向代理与自动 HTTPS
+│   ├── baby-mochen.service     # 裸机 systemd 单元（NAS / 无 docker 环境）
+│   ├── backup.sh               # 每日全库备份（轮转 + 可选异地 rsync）
+│   └── .env.example            # 运行配置模板
 ├── docs/                       # 团队标准规范与项目文档
 ├── public/                     # Vite 静态资源根
 ├── index.html                  # HTML 入口
