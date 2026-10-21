@@ -1,0 +1,30 @@
+{
+  "name": "yanyucloudcube-mochen",
+  "private": true,
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "BUILD_TARGET=fullstack vite build && node scripts/build-boot.mjs",
+    "build:static": "vite build",
+    "build:kimix": "BUILD_TARGET=fullstack vite build && node scripts/build-server.mjs",
+    "preview": "vite preview",
+    "build:server": "node scripts/build-server.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "bundle:template": "node scripts/bundle.mjs template",
+    "bundle:kimix": "node scripts/bundle-kimix.mjs",
+    "start": "node dist-server/boot.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "^0.25.12",
+    "vite": "^6.3.5"
+  },
+  "description": "YanYuCloudCube-MoChen · 个人专用版宝宝成长日志（全栈持久化 + 家庭共享）"
+}
