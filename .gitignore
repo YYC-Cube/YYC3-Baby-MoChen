@@ -18,3 +18,7 @@ dist-server/
 # 编辑器本地配置
 .vscode/
 .idea/
+
+# 真实家庭照片：只留在本机与私有备份，不进公开仓库 / 不随构建发布
+docs/assets/family/
+public/沫辰-*/
