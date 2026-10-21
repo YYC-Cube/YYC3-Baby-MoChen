@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="center">
-  <img src="./public/yyc3-family.png" alt="YanYuCloudCube · YYC³ AI Family" width="100%" />
+  <img src="./public/assets/yyc3-family.png" alt="YanYuCloudCube · YYC³ AI Family" width="100%" />
 </p>
 
 <h1 align="center">YanYuCloudCube-MoChen</h1>
@@ -283,8 +283,8 @@ npm start
 ```text
 YYC3-Baby-MoChen/
 ├── public/
-│   ├── assets/                 # 插画、头像、字体、图标等静态资产
-│   └── yyc3-family.png         # 文档顶图 / 品牌家族图
+│   └── assets/                 # 插画、头像、字体、图标、品牌图（yyc3-family.png）
+├── docs/assets/family/         # 家庭实拍素材（不随站点发布）
 ├── src/
 │   ├── main.jsx                # 应用入口：路由、主题、语言、登录闸、同步
 │   ├── views.jsx               # 今日 / 相册 / 家庭视图

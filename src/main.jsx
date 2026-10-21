@@ -12,7 +12,7 @@ import { languages, tr } from "./i18n.js";
 import { formatDuration, trValue } from "./data.js";
 import { fromLocalInput, toLocalInput } from "./format.js";
 import { derive } from "./derive.js";
-import { archiveState, loadState, newId, resetState, roleOf, saveState, signedInState, withRole } from "./store.js";
+import { archiveState, loadState, mergeSynced, newId, resetState, roleOf, saveState, signedInState, withRole } from "./store.js";
 import { endSignOut, readSession, startSignIn, subscribeSession } from "./auth.js";
 import { shotTimeOf } from "./exif.js";
 import { dropBlob, loadBlobs, putBlob } from "./photos.js";
@@ -533,15 +533,27 @@ function App() {
       return;
     }
     setGate("redirecting");
-    const user = await startSignIn();
-    // 注入式登录不跳页、当场给结果：拿到了按登录处理，没拿到留在原地。
+    let result;
+    try {
+      result = await startSignIn();
+    } catch {
+      // 登录组件自己抛错（弹窗被拦、网络失败）：回到可重试状态。
+      setGate("unavailable");
+      return;
+    }
+    // 整页正在跳去授权页，保持 redirecting 让页面交给浏览器即可。
+    if (result && result.navigated) return;
+    const user = result && result.user;
     if (user) {
       remote.resetWriteGate();
       setState((prev) => signedInState(prev, user));
       closeAllSheetsRef.current();
       setGate("in");
       toastRef.current(tr(langRef.current).sheet.signedInDone);
+      return;
     }
+    // 登录入口没配置或用户取消了登录：不能停在 redirecting 上（那里没有出口）。
+    setGate("unavailable");
   }, []);
 
   // 这个账号在家庭里的身份。身份存在共享状态里，所以换设备也还是它。
@@ -611,6 +623,13 @@ function App() {
   // 请求失败、临时断网时「问不到」不等于「没登录」，那时候把本地清掉
   // 就是拿一次网络抖动去换用户的数据。问不到就保持原样。
   useEffect(() => {
+    // 静态形态（GitHub Pages / 纯本地）没有登录服务：
+    // 直接开闸进应用，走 localStorage + IndexedDB 单机模式。
+    // 这一段在静态产物里是唯一活着的分支，其余会话逻辑会被编译期摇掉。
+    if (!__SHARED_BACKEND__) {
+      setGate("in");
+      return undefined;
+    }
     let alive = true;
     const apply = (user, available) => {
       if (!alive) return;
@@ -629,9 +648,15 @@ function App() {
       }
       // 没人登录：本地那份是上一个账号留下的，先归档清零，
       // 然后直接跳去授权页 —— 个人专用版未登录没有可看的东西。
-      if (own && available) landSignedOut();
-      else if (!own) redirectToSignIn();
-      else setGate("unavailable");
+      // 但「服务端没接登录组件」或「问不到服务端」是另一回事：
+      // 这时候闸门永远打不开，页面会一直停在「登录服务不可用」上。
+      // 继续用本地存档进应用，等登录恢复后重试点登录即可。
+      if (!available) {
+        setGate("in");
+        return;
+      }
+      if (own) landSignedOut();
+      else redirectToSignIn();
     };
     (async () => {
       const session = await readSession();
@@ -690,8 +715,8 @@ function App() {
     };
   }, []);
 
-  // 状态一变就推给服务端。冲突（别人先存了）时以服务端为准重新落地，
-  // 避免两个人来回覆盖对方的记录。
+  // 状态一变就推给服务端。冲突（别人先存了）时做并集合并，
+  // 再带上新 revision 重推一次 —— 任何一方刚录入的内容都不该消失。
   useEffect(() => {
     if (!shared) return undefined;
     if (skipPushRef.current) {
@@ -717,8 +742,10 @@ function App() {
         if (!alive) return;
         if (result.conflict && result.current) {
           revisionRef.current = result.current.revision || 0;
-          skipPushRef.current = true;
-          setState((prev) => ({ ...prev, ...result.current.payload }));
+          // 合并而不是覆盖：按 id 取并集、同 id 取较新、映射字段本地优先。
+          // 合并后的 state 会触发下一拍推送，把两边内容一起落到服务端。
+          setState((prev) => mergeSynced(prev, result.current.payload));
+          toast(tr(langRef.current).sheet.syncMerged);
         } else if (result.ok) {
           revisionRef.current = result.revision;
         }
@@ -1229,9 +1256,13 @@ function App() {
       }
       return;
     }
-    if (own && session.available) landSignedOut();
-    else if (!own) redirectToSignIn();
-    else setGate("unavailable");
+    // 同样：登录组件不可用/问不到时不把闸门关死，退回本地模式。
+    if (!session.available) {
+      setGate("in");
+      return;
+    }
+    if (own) landSignedOut();
+    else redirectToSignIn();
   }, [landSignedOut, redirectToSignIn]);
 
   const signOutNow = useCallback(async () => {

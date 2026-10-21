@@ -17,7 +17,13 @@ import {
   readState,
   writeState
 } from "./db.js";
-import { authorizeUrl, completeCallback, cookieHeader, kimiConfigured } from "./kimi.js";
+import {
+  authorizeUrl,
+  completeCallback,
+  cookieHeader,
+  kimiConfigured,
+  oauthCookieHeader
+} from "./kimi.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -137,7 +143,13 @@ async function handleApi(req, res, url) {
   // 授权地址，凭据一直留在这一侧。
   if (url.pathname === "/api/auth/signin" && req.method === "GET") {
     if (!kimiConfigured()) return sendJson(res, 404, { error: "sign-in-unavailable" });
-    return send(res, 302, "", { location: authorizeUrl(req) });
+    // state 本身带 HMAC 签名，再加一枚只回传给本浏览器的 nonce：
+    // 回调时两边对上才算这次登录真的是这台设备发起的（防 login CSRF）。
+    const { url: target, nonce } = authorizeUrl(req);
+    return send(res, 302, "", {
+      location: target,
+      "set-cookie": oauthCookieHeader(nonce, req),
+    });
   }
 
   // 授权后的回调：换 token、验签、拉资料，成功就把会话 cookie 种下并回首页。
@@ -153,7 +165,8 @@ async function handleApi(req, res, url) {
         // signin=ok 告诉前端「会话刚种下，正在生效」：它会等会话问到再渲染，
         // 而不是先把落地页或未登录的样子闪一遍。
         location: "/?signin=ok",
-        "set-cookie": cookieHeader(token, req),
+        // 会话 cookie 种下，同时把一次性 nonce 清掉 —— 它已经用过了。
+        "set-cookie": [cookieHeader(token, req), oauthCookieHeader("", req, { clear: true })],
       });
     } catch (error) {
       console.error("oauth callback failed:", error.message);
@@ -226,10 +239,11 @@ async function handleApi(req, res, url) {
       // 白名单兜底：白名单外的存量 mime 一律按二进制流下发
       //（配合 nosniff 只能下载不能执行），杜绝把 text/html 原样回传被浏览器当页面渲染。
       const mime = PHOTO_MIME.has(row.mime) ? row.mime : "application/octet-stream";
-      // 位图内容不会变，可以让浏览器长期缓存。
+      // 位图内容不会变，可以让浏览器长期缓存；但这是私人照片，
+      // 不能让中间代理/CDN 缓存后递给别人，所以是 private 而不是 public。
       return send(res, 200, row.bytes, {
         "content-type": mime,
-        "cache-control": "public, max-age=31536000, immutable",
+        "cache-control": "private, max-age=31536000, immutable",
       });
     }
     if (req.method === "PUT") {

@@ -12,7 +12,7 @@
 //
 // 零第三方依赖：JWKS 验签用 Node 内置 crypto（RS256 / ES256 / ES384 / ES512），
 // 本站会话是 HMAC-SHA256 签的 JWT。验签失败一律当未登录，不做放行兜底。
-import { createHmac, createPublicKey, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
+import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 
 const APP_ID = process.env.APP_ID || "";
 const APP_SECRET = process.env.APP_SECRET || "";
@@ -25,6 +25,10 @@ const AUTH_URL = trimSlash(process.env.KIMI_AUTH_URL || process.env.kimi_AUTH_UR
 const OPEN_URL = trimSlash(process.env.KIMI_OPEN_URL || process.env.kimi_OPEN_URL);
 
 export const COOKIE_NAME = "bgl_sid";
+// 发起登录时种下的短期 nonce：回调必须带上同一浏览器里的它，
+// 防止把攻击者发起的授权码塞进受害者浏览器（login CSRF）。
+export const OAUTH_COOKIE = "bgl_oauth";
+const OAUTH_TTL_S = 10 * 60;
 const SESSION_TTL_S = 30 * 24 * 3600;
 
 export function kimiConfigured() {
@@ -89,16 +93,35 @@ export function verifySession(token) {
   return claims;
 }
 
-// 本地 http 用 Lax；线上跨站回跳需要 None + Secure。
+// 请求是不是走的 HTTPS：优先看反代头，再看 Node 自己的 TLS socket。
+// 不能只看 host 是不是 localhost —— 内网 IP / NAS 直连也是 http，
+// 而 `SameSite=None` 必须配 `Secure`，http 下会被浏览器直接丢弃，
+// 表现就是「登录成功又立刻变回未登录」。
+export function isSecure(req) {
+  const protos = String(req.headers["x-forwarded-proto"] || "").split(",").map((s) => s.trim());
+  return Boolean(req.socket && req.socket.encrypted) || protos.includes("https");
+}
+
+// 本地 http 用 Lax；HTTPS（含反代终结 TLS）才用 None + Secure。
 export function cookieHeader(token, req, { clear = false } = {}) {
-  const host = String(req.headers.host || "");
-  const localhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
   const parts = [
     `${COOKIE_NAME}=${clear ? "" : token}`,
     "Path=/",
     "HttpOnly",
     `Max-Age=${clear ? 0 : SESSION_TTL_S}`,
-    localhost ? "SameSite=Lax" : "SameSite=None; Secure",
+    isSecure(req) ? "SameSite=None; Secure" : "SameSite=Lax",
+  ];
+  return parts.join("; ");
+}
+
+// 登录 nonce 的临时 Cookie：只发给回调路径，10 分钟过期。
+export function oauthCookieHeader(nonce, req, { clear = false } = {}) {
+  const parts = [
+    `${OAUTH_COOKIE}=${clear ? "" : nonce}`,
+    "Path=/api/oauth",
+    "HttpOnly",
+    `Max-Age=${clear ? 0 : OAUTH_TTL_S}`,
+    isSecure(req) ? "SameSite=None; Secure" : "SameSite=Lax",
   ];
   return parts.join("; ");
 }
@@ -120,11 +143,13 @@ function callbackUrl(req) {
 
 /* ── 第一步：授权地址 ────────────────────────────────────────────────── */
 
-// state 里编码 redirect_uri（回调时还原、传给 token 交换），并带 HMAC 签名，
-// 防止回调请求被伪造或篡改。
+// state 里编码 redirect_uri 与一次性 nonce，并带 HMAC 签名：
+// 既防篡改，也防「把别人发起的回调塞进你的浏览器」。
+// 返回 { url, nonce } —— nonce 要同时种进浏览器 Cookie。
 export function authorizeUrl(req) {
   const redirectUri = callbackUrl(req);
-  const payload = b64url(redirectUri);
+  const nonce = randomBytes(16).toString("hex");
+  const payload = b64url(JSON.stringify({ r: redirectUri, n: nonce }));
   const state = `${payload}.${b64url(hmac(payload)).slice(0, 24)}`;
   const url = new URL(`${AUTH_URL}/api/oauth/authorize`);
   url.searchParams.set("client_id", APP_ID);
@@ -132,7 +157,7 @@ export function authorizeUrl(req) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "profile");
   url.searchParams.set("state", state);
-  return url.toString();
+  return { url: url.toString(), nonce };
 }
 
 function readState(state) {
@@ -140,9 +165,12 @@ function readState(state) {
   if (idx <= 0) return null;
   const payload = state.slice(0, idx);
   const sig = state.slice(idx + 1);
-  if (b64url(hmac(payload)).slice(0, 24) !== sig) return null;
+  const expect = b64url(hmac(payload)).slice(0, 24);
+  if (expect.length !== sig.length || !timingSafeEqual(Buffer.from(expect), Buffer.from(sig))) return null;
   try {
-    return Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const decoded = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    if (!decoded || typeof decoded.r !== "string" || typeof decoded.n !== "string") return null;
+    return { redirectUri: decoded.r, nonce: decoded.n };
   } catch {
     return null;
   }
@@ -209,8 +237,18 @@ export function verifyJws(token, keys) {
 /* ── 第二步：回调完成登录 ────────────────────────────────────────────── */
 
 export async function completeCallback(code, state, req) {
-  const redirectUri = readState(state);
-  if (!redirectUri) throw new Error("bad state");
+  const decoded = readState(state);
+  if (!decoded) throw new Error("bad state");
+  // state 签名只证明「这串 state 是本站发出的」，不能证明「这次登录是这台
+  // 浏览器发起的」：攻击者可以自己发起一次授权、把自己的 code+state 塞给
+  // 受害者，受害者点开后就成了攻击者的账号（login CSRF）。所以发起登录时
+  // 另把一次性 nonce 种进 HttpOnly Cookie，回调必须两边对得上。
+  const cookieNonce = readCookie(req, OAUTH_COOKIE);
+  const nonceOk = Boolean(cookieNonce)
+    && cookieNonce.length === decoded.nonce.length
+    && timingSafeEqual(Buffer.from(cookieNonce), Buffer.from(decoded.nonce));
+  if (!nonceOk) throw new Error("bad state");
+  const redirectUri = decoded.redirectUri;
   const tokenResp = await fetch(`${AUTH_URL}/api/oauth/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },

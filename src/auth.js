@@ -91,17 +91,24 @@ export async function readSession() {
 // 触发登录。注入式由 provider 自己决定弹窗还是跳转；
 // 服务端式跳到服务端给的登录入口（由接入的 auth 组件提供，
 // 授权完成回到本站时带着会话凭证，应用启动时自然读到）。
+//
+// 返回值固定为 { user, navigated }：
+//   navigated=true  已经整页跳走，调用方不要再改 UI（页面正在卸载）；
+//   user            注入式当场返回的登录用户，取消登录时为 null；
+//   两者都为空且未跳转  说明登录入口没配置好，调用方必须回落到可操作状态，
+//                      不能把界面留在「正在登录」上。
 export async function startSignIn() {
   const provider = injected();
   if (provider && typeof provider.signIn === "function") {
-    return normalizeUser(await provider.signIn());
+    return { user: normalizeUser(await provider.signIn()), navigated: false };
   }
   if (__SHARED_BACKEND__ && serverAvailable && serverSignInUrl) {
     // OAuth 要整页跳走（先去授权页，再由服务端回调把人送回来），
     // 不能用 fetch —— 授权页得让用户真的看见。
     window.location.assign(serverSignInUrl);
+    return { user: null, navigated: true };
   }
-  return null;
+  return { user: null, navigated: false };
 }
 
 export async function endSignOut() {

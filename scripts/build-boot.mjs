@@ -35,7 +35,12 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 try {
   for (const line of fs.readFileSync(path.join(HERE, '..', '.env'), 'utf8').split('\\n')) {
     const m = line.match(/^\\s*([A-Z_][A-Z0-9_]*)\\s*=\\s*(.*?)\\s*$/);
-    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2];
+    if (!m || m[1] in process.env) continue;
+    // .env 里常见 DATABASE_URL="mysql://..." 这种带成对引号的写法：
+    // 引号是给 shell/解析器看的边界，不该原样进变量值。
+    const raw = m[2];
+    const quoted = /^(['"])([\\s\\S]*)\\1$/.exec(raw);
+    process.env[m[1]] = quoted ? quoted[2] : raw;
   }
 } catch {}
 // FC custom runtime routes to port 3000 and injects no PORT of its own.

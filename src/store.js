@@ -254,3 +254,40 @@ function mergeOrder(saved) {
 export function newId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
+
+// 同步冲突时合并本地状态与服务端 payload。
+// 原则：两边新录入的内容都不能丢，宁可保留稍旧的一份，也不整份覆盖。
+//   - 记录 / 照片 / 自定义成员：按 id 取并集；同 id 取时间戳较新的一份（本地不早于远端时保留本地）
+//   - 名字 / 备注 / 角色 / 头像：逐键合并，本地优先（本地刚改的不会被远端冲掉）
+//   - 其余字段：本地优先，远端只补本地缺失的键
+export function mergeSynced(local, remote) {
+  if (!remote || typeof remote !== "object") return local;
+  const byTime = (rows, remoteRows, stamp) => {
+    const map = new Map();
+    for (const row of Array.isArray(remoteRows) ? remoteRows : []) {
+      if (row && row.id) map.set(row.id, row);
+    }
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row || !row.id) continue;
+      const other = map.get(row.id);
+      if (!other) {
+        map.set(row.id, row);
+        continue;
+      }
+      if ((Date.parse(stamp(row)) || 0) >= (Date.parse(stamp(other)) || 0)) map.set(row.id, row);
+    }
+    return [...map.values()];
+  };
+  const newestFirst = (rows) => rows.sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
+  return {
+    ...remote,
+    ...local,
+    records: newestFirst(byTime(local.records, remote.records, (row) => row.at)),
+    photos: newestFirst(byTime(local.photos, remote.photos, (row) => row.at)),
+    faces: { ...(remote.faces || {}), ...(local.faces || {}) },
+    names: { ...(remote.names || {}), ...(local.names || {}) },
+    roleNotes: { ...(remote.roleNotes || {}), ...(local.roleNotes || {}) },
+    roles: { ...(remote.roles || {}), ...(local.roles || {}) },
+    extraMembers: byTime(local.extraMembers, remote.extraMembers, () => ""),
+  };
+}
