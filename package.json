@@ -24,7 +24,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.6.0",
     "esbuild": "^0.25.12",
-    "vite": "^6.3.5"
+    "vite": "^6.4.5"
   },
   "description": "YanYuCloudCube-MoChen · 个人专用版宝宝成长日志（全栈持久化 + 家庭共享）"
 }
