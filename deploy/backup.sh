@@ -23,11 +23,17 @@ URL_REGEX='^mysql://([^:]+):([^@]+)@([^:/]+):([0-9]+)/(.+)$'
 DB_USER="${BASH_REMATCH[1]}"; DB_PASS="${BASH_REMATCH[2]}"
 DB_HOST="${BASH_REMATCH[3]}"; DB_PORT="${BASH_REMATCH[4]}"; DB_NAME="${BASH_REMATCH[5]}"
 
+# dump 客户端解析：优先 .env 显式指定 MYSQLDUMP_BIN（NAS 等 app 自装场景），
+# 否则依次找 mysqldump / mariadb-dump
+DUMP_BIN="${MYSQLDUMP_BIN:-}"
+[ -n "${DUMP_BIN}" ] || DUMP_BIN="$(command -v mysqldump || command -v mariadb-dump || true)"
+[ -n "${DUMP_BIN}" ] || { echo "找不到 mysqldump/mariadb-dump；可在 .env 设 MYSQLDUMP_BIN 全路径" >&2; exit 1; }
+
 STAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${BACKUP_DIR}"
 OUT="${BACKUP_DIR}/${DB_NAME}-${STAMP}.sql.gz"
 
-MYSQL_PWD="${DB_PASS}" mysqldump \
+MYSQL_PWD="${DB_PASS}" "${DUMP_BIN}" \
   -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" \
   --single-transaction --triggers \
   "${DB_NAME}" | gzip -9 > "${OUT}"

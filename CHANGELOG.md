@@ -5,11 +5,39 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] · 2026-10-21
+## [Unreleased] · 2026-10-22
 
-> 本轮为审核驱动闭环修复：P1 打包阻断项 → P2 安全项 → P3 工程一致性，全部经端到端验证。
+> 2026-10-21 审核驱动闭环修复；2026-10-22 路线①（自建账号）实现与 NAS 生产上线闭环。
 
 ### Added
+
+- **自建账号体系（路线①，零新依赖）**：[server/local.js](./server/local.js) 以 Node 内置 crypto 实现闭环登录——
+  账号存 MySQL `auth_user` 表（[server/db.js](./server/db.js) `ensureSchema()` 启动自动建表），
+  密码 scrypt 散列（N=16384/r=8/p=1，16B 盐 + 64B 派生），会话 HS256 JWT 存 HttpOnly cookie（`bgl_lid`，30 天）；
+  服务端渲染中文登录页（零外部资源、noindex），错密码/锁定/存储故障区分 401/429/503。
+  与 kimi/header/JWT 三种鉴权互斥共存（[server/auth.js](./server/auth.js) 探测链 kimi → local → header → JWT），
+  前端零改动复用既有跳登出逻辑。
+- **家人账号管理 CLI**：[scripts/user.mjs](./scripts/user.mjs) 支持
+  `add / passwd / list / enable / disable / rm`，密码经 `BGL_USER_PWD` 环境变量传入（不进 argv 与 shell 历史）。
+- **NAS 生产部署产物与运维手册**：[deploy/start.sh](./deploy/start.sh)（flock 防并发 + healthz 幂等的看门狗脚本，
+  配合 crontab `@reboot` + `*/5` 实现无 root 自愈）；
+  [ops/OPERATIONS.md](./ops/OPERATIONS.md) 权威运维手册（拓扑/端口决策/发布回滚/账号管理/备份恢复/故障排查表/安全基线）。
+  生产实测：NAS `192.168.3.45:3030` 上线，登录-会话-登出全链路通过，恢复演练通过。
+
+### Security
+
+- **自建登录三重防护**：同 IP 连错 8 次锁 15 分钟（内存态，直连地址为键，不信 X-Forwarded-For）；
+  带 Origin 的表单 POST 强制同源校验（防 login CSRF）；账号不存在也跑等价 scrypt（抹平计时侧信道）。
+
+### Changed
+
+- [deploy/backup.sh](./deploy/backup.sh)：dump 客户端动态解析（`MYSQLDUMP_BIN` 显式指定 → `mysqldump` → `mariadb-dump`），
+  适配 fnOS/NAS 应用自装 MySQL 的 PATH 缺失场景。
+- [deploy/.env.example](./deploy/.env.example)：补 `AUTH_LOCAL_SECRET` 与备份配置项；
+  端口说明对齐团队约定（3030 起；NAS 实测 3000/3100 已被既有容器占用）。
+- [deploy/README.md](./deploy/README.md)：标注方案 B 无 root 落地形态（指向 ops/OPERATIONS.md）、
+  鉴权表扩为四选一、备份章节更新为已上线并演练。
+- 服务器未配置鉴权时的日志文案更新为四选项提示（`kimi / AUTH_LOCAL_SECRET / AUTH_HEADER_USER / AUTH_JWKS_URL`）。
 
 - **CI 质量门禁与 GitHub Pages 自动化部署（[.github/workflows/](./.github/workflows/)）**：
   [ci.yml](./.github/workflows/ci.yml) 在 push/PR 时执行双形态构建、静态产物纯净性断言

@@ -114,7 +114,12 @@ curl -s https://baby.example.com/healthz
 
 ---
 
-## 五、方案 B：裸机 systemd（NAS 内网 / ECS 无 docker 通用）
+## 五、方案 B：裸机（NAS 内网 / ECS 无 docker 通用）
+
+> **✅ 已于 2026-10-22 落地**：NAS 无 root（sudo 需密码），实际采用「便携版 Node + crontab 看门狗」
+> 形态（[deploy/start.sh](./start.sh) 幂等拉起，`@reboot` + `*/5` 两条目），端口 3030。
+> **日常运维、账号管理、备份恢复的权威手册见 [ops/OPERATIONS.md](../ops/OPERATIONS.md)。**
+> 以下 systemd 流程保留给持有 root 的环境（如 ECS）。
 
 NAS 实测无 docker，走本方案。前置：Node ≥ 20.11（`node -v` 检查；fnOS 若无则安装官方 Node 二进制包）。
 

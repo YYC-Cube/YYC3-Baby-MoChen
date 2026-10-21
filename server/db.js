@@ -51,10 +51,25 @@ CREATE TABLE IF NOT EXISTS family_photo (
   PRIMARY KEY (family_id, blob_id)
 )`;
 
+// 自建账号表（server/local.js）：密码只存 scrypt 派生值 + 盐，绝不明文。
+const USER_SCHEMA = `
+CREATE TABLE IF NOT EXISTS auth_user (
+  username     VARCHAR(40)   NOT NULL,
+  family_id    VARCHAR(64)   NOT NULL,
+  display_name VARCHAR(40)   NOT NULL DEFAULT '',
+  pwd_salt     VARBINARY(16) NOT NULL,
+  pwd_hash     VARBINARY(64) NOT NULL,
+  enabled      TINYINT       NOT NULL DEFAULT 1,
+  created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (username)
+)`;
+
 export async function ensureSchema() {
   const db = getPool();
   await db.query(SCHEMA);
   await db.query(PHOTO_SCHEMA);
+  await db.query(USER_SCHEMA);
   storageReady = true;
 }
 

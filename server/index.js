@@ -24,6 +24,7 @@ import {
   kimiConfigured,
   oauthCookieHeader
 } from "./kimi.js";
+import { handleSignIn, localConfigured, localCookieHeader, signInPage } from "./local.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -184,11 +185,40 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // 自建账号登录（server/local.js）：GET 出表单，POST 验密码种会话。
+  // 登录本身要查库，但端点必须放在 hasDatabase() 闸门之前 ——
+  // 否则库一抖动连登录页都打不开，人就被锁在门外了。
+  if (url.pathname === "/api/auth/local" && localConfigured()) {
+    if (req.method === "GET") {
+      drain(req);
+      // 已登录的人再来登录页直接回首页
+      if (session) return send(res, 302, "", { location: "/" });
+      return send(res, 200, signInPage(), { "content-type": "text/html; charset=utf-8" });
+    }
+    if (req.method === "POST") {
+      const result = await handleSignIn(req);
+      if (result.ok) return send(res, 302, "", { location: "/", "set-cookie": result.cookie });
+      const reason = result.reason === "locked" ? "尝试次数过多，请 15 分钟后再试"
+        : result.reason === "storage" ? "存储暂时不可用，请稍后再试"
+          : result.reason === "csrf" ? "请求来源校验失败"
+            : "用户名或密码不对";
+      const status = result.reason === "locked" ? 429
+        : result.reason === "storage" ? 503
+          : result.reason === "csrf" ? 403
+            : 401;
+      return send(res, status, signInPage(reason), { "content-type": "text/html; charset=utf-8" });
+    }
+  }
+
   // 退出：清掉本站的会话 cookie。auth 组件那边的登录态由它自己管，
-  // 这里只负责让本站忘记这个人。
+  // 这里只负责让本站忘记这个人。kimi 与自建账号的 cookie 哪个配了清哪个，
+  // 都配了就一起清（set-cookie 允许多枚）。
   if (url.pathname === "/api/auth/signout" && req.method === "POST") {
     drain(req);
-    const headers = kimiConfigured() ? { "set-cookie": cookieHeader("", req, { clear: true }) } : {};
+    const cookies = [];
+    if (kimiConfigured()) cookies.push(cookieHeader("", req, { clear: true }));
+    if (localConfigured()) cookies.push(localCookieHeader("", req, { clear: true }));
+    const headers = cookies.length ? { "set-cookie": cookies } : {};
     return send(res, 200, JSON.stringify({ ok: true }), { "content-type": "application/json; charset=utf-8", ...headers });
   }
 
@@ -336,7 +366,7 @@ async function main() {
   console.log(
     authConfigured()
       ? `auth ready (${authInfo().provider})`
-      : "AUTH_HEADER_USER / AUTH_JWKS_URL not set — running without sign-in",
+      : "auth not configured (kimi / AUTH_LOCAL_SECRET / AUTH_HEADER_USER / AUTH_JWKS_URL)",
   );
   server.listen(PORT, () => console.log(`listening on ${PORT}`));
 }

@@ -19,6 +19,7 @@
 // 会话解析失败一律当作未登录，绝不放行：宁可让人重新登录，
 // 也不能把别人家的记录发出去。
 import { COOKIE_NAME, fetchJwks, kimiConfigured, readCookie, verifyJws, verifySession } from "./kimi.js";
+import { fromLocal, localConfigured } from "./local.js";
 
 const HEADER_USER = process.env.AUTH_HEADER_USER || "";
 const HEADER_NAME = process.env.AUTH_HEADER_NAME || "";
@@ -29,14 +30,16 @@ const SIGNIN_URL = process.env.AUTH_SIGNIN_URL || "";
 const FAMILY_CLAIM = process.env.AUTH_FAMILY_CLAIM || "family_id";
 
 export function authConfigured() {
-  return Boolean(kimiConfigured() || HEADER_USER || JWKS_URL);
+  return Boolean(kimiConfigured() || HEADER_USER || JWKS_URL || localConfigured());
 }
 
 // 前端要知道「有没有登录入口」，据此决定登录按钮是可点还是给出说明。
 // kimi 访客登录的入口固定是本站的 /api/auth/signin（它再 302 去授权页），
 // 这样前端不需要知道 APP_ID 和授权地址，凭据始终留在服务端。
+// 自建账号的入口是本站的 /api/auth/local（服务端渲染的登录表单）。
 export function authInfo() {
   if (kimiConfigured()) return { provider: "kimi", signInUrl: "/api/auth/signin" };
+  if (localConfigured()) return { provider: "local", signInUrl: "/api/auth/local" };
   if (HEADER_USER) return { provider: "header", signInUrl: SIGNIN_URL || null };
   if (JWKS_URL) return { provider: "jwt", signInUrl: SIGNIN_URL || null };
   return { provider: null, signInUrl: null };
@@ -131,6 +134,8 @@ export async function sessionOf(req) {
   if (!authConfigured()) return null;
   const byKimi = fromKimi(req);
   if (byKimi) return byKimi;
+  const byLocal = fromLocal(req);
+  if (byLocal) return byLocal;
   const headers = req.headers || {};
   const byHeader = fromHeaders(headers);
   if (byHeader) return byHeader;
