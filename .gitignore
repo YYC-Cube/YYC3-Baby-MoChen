@@ -3,6 +3,7 @@ node_modules/
 
 # 构建产物
 dist/
+dist-server/
 .bundle/
 
 # 本地环境变量（密钥不入库）
