@@ -9,6 +9,27 @@
 
 > 本轮为审核驱动闭环修复：P1 打包阻断项 → P2 安全项 → P3 工程一致性，全部经端到端验证。
 
+### Added
+
+- **CI 质量门禁与 GitHub Pages 自动化部署（[.github/workflows/](./.github/workflows/)）**：
+  [ci.yml](./.github/workflows/ci.yml) 在 push/PR 时执行双形态构建、静态产物纯净性断言
+  （零 `/api` 字符串、CNAME 与 `.nojekyll` 就位）与无库服务端冒烟（`/healthz` 必须如实返回 `db:false`）；
+  [pages.yml](./.github/workflows/pages.yml) 推送 `main` 自动构建静态站并以 OIDC 发布至
+  GitHub Pages 自定义域名 [mc.yyc3.vip](https://mc.yyc3.vip)。
+- **仓库可见性**：GitHub topics 标签与 [README.md](./README.md) 关键词行、Pages 部署形态行。
+- **阶段总结与衔接文档**：[docs/0379-baby-mochen-impl-20261021/](./docs/0379-baby-mochen-impl-20261021/03-总结文档与状态同步.md)
+  四件套（审核报告 / 任务规划 / 执行日志 / 总结衔接）。
+- **落地上线指导方案与部署产物（[deploy/](./deploy/README.md)）**：
+  基于现网实测拓扑（ECS yyc3-202 公网 / NAS yyc3-45 内网 fnOS / Mac yyc3-22 主库）输出双方案——
+  ECS `docker compose`（Caddy 自动 HTTPS + MySQL 8.4）与裸机 `systemd`（NAS 实测无 docker，MariaDB 10.3 直连）；
+  含数据库开通、鉴权接入三选一、上线验收清单、备份容灾（[backup.sh](./deploy/backup.sh)）
+  与安全风险表。部署最小集仅 `dist-server/boot.js`（esbuild 自包含，mysql2 已内联）+ `dist/`。
+- **NAS 应用库端到端验证**：NAS MariaDB（192.168.3.45:3306）新建 `yyc3_baby_mochen`
+  库与专用最小权限账号 `bgl`，`ensureSchema()` 自动建表，
+  `/healthz {"ok":true,"db":true}`、状态 PUT/GET 回环、过期 revision 409 拦截全部通过（测试数据已清理）。
+- **GitHub 仓库登记**：[README.md](./README.md) 顶部徽章与项目属性表登记
+  [github.com/YYC-Cube/YYC3-Baby-MoChen](https://github.com/YYC-Cube/YYC3-Baby-MoChen)。
+
 ### Fixed
 
 - **静态打包失效（P1 阻断项）**：`npm run build` 脚本内联的 `BUILD_TARGET=fullstack` 会覆盖
