@@ -1,0 +1,66 @@
+# 质量门禁：双形态构建 + 静态产物纯净性 + 服务端冒烟
+# 全部通过才允许合并/发布；Pages 部署独立于此 workflow（见 pages.yml）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 构建·纯净性·冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（锁定版本）
+        run: npm ci
+
+      - name: 构建静态形态
+        run: npm run build:static
+
+      - name: 静态产物纯净性断言
+        run: |
+          # 静态站必须零 /api 字符串（编译期摇树守卫的最终防线）
+          if grep -rq "/api" dist/; then
+            echo "::error::静态产物含 /api 字符串，编译期摇树失效"
+            grep -rn "/api" dist/ | head -20
+            exit 1
+          fi
+          # Pages 域名与免 Jekyll 标记必须随产物发布
+          test -f dist/CNAME || { echo "::error::dist/CNAME 缺失"; exit 1; }
+          test -f dist/.nojekyll || { echo "::error::dist/.nojekyll 缺失"; exit 1; }
+          echo "静态产物纯净性 OK（零 /api，CNAME 与 .nojekyll 就位）"
+
+      - name: 构建服务端单文件
+        run: npm run build:server
+
+      - name: 服务端冒烟（无库启动 → /healthz 守卫）
+        run: |
+          node dist-server/boot.js & SMOKE_PID=$!
+          sleep 2
+          BODY=$(curl -sf --max-time 5 http://127.0.0.1:3000/healthz) || {
+            echo "::error::/healthz 不可达"; kill $SMOKE_PID 2>/dev/null; exit 1;
+          }
+          kill $SMOKE_PID 2>/dev/null || true
+          echo "healthz → $BODY"
+          # 无 DATABASE_URL 时 db 必须为 false（fail-closed，不假装连库）
+          test "$BODY" = '{"ok":true,"db":false}' || {
+            echo "::error::无库健康检查响应异常：$BODY"; exit 1;
+          }
+          echo "服务端冒烟 OK"

@@ -1,0 +1,59 @@
+# GitHub Pages 自动化部署：静态站 → 自定义域名 mc.yyc3.vip
+# 前置（仓库 Settings → Pages 已配置完毕）：Source = GitHub Actions
+# DNS（已在阿里云侧生效）：mc.yyc3.vip CNAME → YYC-Cube.github.io
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages 部署专属权限：OIDC 令牌换发，无需 PAT
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一次部署；进行中不取消（避免半成品上线）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 构建并发布静态站
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（锁定版本）
+        run: npm ci
+
+      - name: 构建静态站（默认中文，共享后端逻辑编译期摇除）
+        run: npm run build:static
+
+      - name: 部署前置断言
+        run: |
+          test -f dist/CNAME     || { echo "::error::dist/CNAME 缺失，自定义域名将失效"; exit 1; }
+          test -f dist/.nojekyll || { echo "::error::dist/.nojekyll 缺失"; exit 1; }
+          if grep -rq "/api" dist/; then
+            echo "::error::静态产物含 /api 字符串"; exit 1;
+          fi
+          echo "前置断言 OK"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

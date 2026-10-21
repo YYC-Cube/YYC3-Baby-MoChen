@@ -428,6 +428,7 @@ CREATE TABLE IF NOT EXISTS family_photo (
 | 静态站 | `BUILD_TARGET=` 空 | `localStorage` + `IndexedDB` | 纯前端托管、个人单机使用 |
 | 全栈站 | `BUILD_TARGET=fullstack` | MySQL / TiDB + 服务端 | 家庭共享、多设备同步 |
 | kimix | `npm run bundle:kimix` | 平台注入 `DATABASE_URL` | 平台 Docker 构建发布 |
+| GitHub Pages | 推送 `main` 自动触发 [pages.yml](.github/workflows/pages.yml) | `localStorage` + `IndexedDB` | 公网演示站：[mc.yyc3.vip](https://mc.yyc3.vip)（自定义域名，CI 质量门禁见 [ci.yml](.github/workflows/ci.yml)） |
 
 ```bash
 # 静态包
@@ -563,6 +564,7 @@ Copyright © 2025-2026 YanYuCloudCube™. All Rights Reserved.
 | 联系邮箱 | [china@yanyucloud.com](mailto:china@yanyucloud.com) |
 | 品牌定位 | 言启象限 · 语枢未来 |
 | 核心理念 | 拟人为本，AI 为核，纯粹为心 |
+| 关键词 | `baby-growth-log` `growth-tracking` `family-album` `family-shared` `react` `react19` `vite` `spa` `i18n` `mysql` `self-hosted` `github-pages` `yyc3` `yanyucloudcube` |
 
 ---
 
